@@ -3,6 +3,7 @@
 This repository contains data and processing scripts associated with the MESOMICS project from the Rare Cancers Genomics initiative (http://rarecancersgenomics.com).
 
 The main analysis paper preprint is available at: https://www.biorxiv.org/content/10.1101/2021.09.27.461908v1
+
 The data note describing the data production, validation, and reuse is available at:  
 
 The `phenotypic_map` folder contains data and R scripts used to prepare matrices for each omic layer (`Preprocessing_*.r`), as well as scripts to run MOFA and the Pareto analysis (`PhenotypicMap_*.r`) for the three cohorts (MESOMICS, Bueno, TCGA).
