@@ -353,7 +353,7 @@ ggplot( arcs_ks.LFs.stats ,aes(x=nb.LFs,y=t_ratio,col=nb.archetypes)) + geom_lin
 ## Warning: Removed 9 row(s) containing missing values (geom_path).
 ```
 
-![](PhenotypicMap_MESOMICS_files/figure-html/Checks stats-1.png)<!-- -->
+![](PhenotypicMap_MESOMICS_files/figure-html/Checksstats-1.png)<!-- -->
 
 The best t_ratio is reached for 2 LFs (LF2 and LF3) and 3 archetypes. We get the archetypes position within LF2-LF3 space and the projection of the samples in the Pareto front delimited by the 3 archetypes:
 
