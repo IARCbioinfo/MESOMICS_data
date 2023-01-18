@@ -1,7 +1,7 @@
 ---
 title: "PhenotypicMap_MESOMICS"
-author: "N. Alcala and Lise Mangiante"
-date: "7/7/2022"
+author: "N. Alcala and L. Mangiante"
+date: "18/01/2022"
 output: 
   html_document: 
     keep_md: yes
@@ -20,10 +20,10 @@ library(tidyverse)
 ```
 
 ```
-## ✔ ggplot2 3.3.6     ✔ purrr   0.3.4
-## ✔ tibble  3.1.7     ✔ dplyr   1.0.9
-## ✔ tidyr   1.2.0     ✔ stringr 1.4.0
-## ✔ readr   2.1.2     ✔ forcats 0.5.1
+## ✔ ggplot2 3.3.6      ✔ purrr   0.3.4 
+## ✔ tibble  3.1.8      ✔ dplyr   1.0.10
+## ✔ tidyr   1.2.1      ✔ stringr 1.5.0 
+## ✔ readr   2.1.3      ✔ forcats 0.5.1
 ```
 
 ```
@@ -51,6 +51,7 @@ library(MOFA2)
 
 ```r
 library(reticulate)
+library(DescTools)
 library(ParetoTI)
 ```
 
@@ -61,6 +62,12 @@ library(ParetoTI)
 ```
 ## 
 ## Attaching package: 'data.table'
+```
+
+```
+## The following object is masked from 'package:DescTools':
+## 
+##     %like%
 ```
 
 ```
@@ -106,7 +113,7 @@ load("D_alt_MOFA.RData")
 
 # Multi-Omic Factor Analysis
 ## Prepare MOFA
-We create the MOFA object, set training and model options amd prepare the object
+We create the MOFA object, set training and model options and prepare the object
 
 ```r
 MOFAobject = create_mofa(list("RNA" = D_exprB_MOFA,"MethPro" = D_met.proB_MOFA,"MethBod" = D_met.bodB_MOFA,"MethEnh" = D_met.enhB_MOFA,
@@ -162,15 +169,6 @@ MOFAobject.trained = run_mofa(MOFAobject, save_data = T, outfile = "MOFAobject.h
 ##     If you prefer to let us automatically install a conda environment with 'mofapy2' installed using the 'basilisk' package, please use the argument 'use_basilisk = TRUE'
 ```
 
-```
-## Warning in load_model(outfile): There are duplicated features names across different views. We will add the suffix *_view* only for those features 
-##             Example: if you have both TP53 in mRNA and mutation data it will be renamed to TP53_mRNA, TP53_mutation
-```
-
-```
-## Warning in .quality_control(object, verbose = verbose): Factor(s) 1, 2, 3, 5 are strongly correlated with the total number of expressed features for at least one of your omics. Such factors appear when there are differences in the total 'levels' between your samples, *sometimes* because of poor normalisation in the preprocessing steps.
-```
-
 ## Extract Latent factor coordinates of samples from MOFA object
 
 ```r
@@ -178,7 +176,7 @@ LFs = as.data.frame(get_factors(MOFAobject.trained)$group1)
 ```
 
 ## Compute variance explained and order factors based on total R2
-For each of the 7 'omic layers, the total R2 is the average squared Pearson correlation coefficient 
+For each of the 7 molecular layers, the total R2 is the average squared Pearson correlation coefficient. For DNA alterations, because it is a binary variable, we also compute the pseudo R2 using the Veall Zimmermann estimator.
 
 ```r
 R2_expr    = colMeans(t(cor(LFs,t(D_exprB_MOFA),use="pairwise.complete.obs") )**2,na.rm=T)
@@ -188,37 +186,66 @@ R2_met.enh = colMeans(t(cor(LFs,t(D_met.enhB_MOFA),use="pairwise.complete.obs") 
 R2_CNV     = colMeans(t(cor(LFs,t(D_cnv_MOFA),use="pairwise.complete.obs") )**2,na.rm=T)
 R2_loh     = colMeans(t(cor(LFs,t(D_loh_MOFA),use="pairwise.complete.obs") )**2,na.rm=T)
 R2_alt     = colMeans(t(cor(LFs,t(D_alt_MOFA),use="pairwise.complete.obs") )**2,na.rm=T)
+R2_alt.logistic = sapply(1:10, function(k) mean(sapply(1:nrow(D_alt_MOFA), function(i) PseudoR2(glm( D_alt_MOFA[i,]~ LFs[,k],family = "binomial"),which = "VeallZimmermann")),na.rm=T ) )
 ```
 
-We normalize R2 so it sums to 100%
+```
+## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
+```
+
+```
+## Warning: glm.fit: algorithm did not converge
+```
+
+```
+## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
+
+## Warning: glm.fit: fitted probabilities numerically 0 or 1 occurred
+```
+
+We put the R2 into a matrix
 
 ```r
-R2.mat = rbind(R2_expr,R2_met.bod,R2_met.pro,R2_met.enh,R2_CNV,R2_loh,R2_alt)
-R2.mat = R2.mat/sum(R2.mat)*100
+R2.mat = rbind(RNA=R2_expr,
+               MethPro=R2_met.pro,
+               MethBod=R2_met.bod,
+               MethEnh=R2_met.enh,
+               "Total CN"=R2_CNV,
+               "Minor CN"=R2_loh,
+               "DNA Alt - naive R2"=R2_alt,
+               "DNA Alt"=R2_alt.logistic)
 ```
 
 We select the 4 factors associated with survival (1 to 4) and reorder them based on their R2 and extract the first 4 LFs
 
 ```r
-R2order = order(colSums(R2.mat)[1:4], decreasing = T)
+R2order = order(colSums(R2.mat[c(1:6,8),])[1:4], decreasing = T)
 R2.mat = R2.mat[,colnames(R2.mat)[R2order]]
-colnames(R2.mat) = c("Ploidy factor (LF1)","Morphology factor (LF2)","Adaptive-response factor (LF3)","CIMP factor (LF4)")
-rownames(R2.mat) = c("RNA","MethPro","MethBod","MethEnh","Total CN","Minor CN","DNA Alt")
+colnames(R2.mat) = c("LF1","LF2","LF3","LF4")
 
-R2.mat.tib = bind_cols(Factor=factor(colnames(R2.mat),levels=colnames(R2.mat)),as_tibble(t(R2.mat))) %>% 
-  pivot_longer(RNA:`DNA Alt`, names_to = "Omics layers",values_to = "Variance explained (%)") %>% 
-  mutate(`Omics layers` = factor(`Omics layers`,levels=rownames(R2.mat)))
+R2.mat.tib = bind_cols(Factor=factor(colnames(R2.mat),levels=colnames(R2.mat)),as_tibble(t(R2.mat*100))) %>% 
+  pivot_longer(RNA:`DNA Alt`, names_to = "Molecular layers",values_to = "Inter-patient variance explained (%)") %>% 
+  mutate(`Molecular layers` = factor(`Molecular layers`,levels=rownames(R2.mat)))
 ```
 
-We then plot the R2 matrix (Figure 1a from Mangiante, Alcala et al. biorxiv 2021)
+We then plot the R2 matrix (Figure 1a from Mangiante, Alcala et al. Nat Genet 2023)
 
 ```r
-colors_omics = c(RNA="#dc0000ff",MethPro="#8fcfc2ff",MethBod="#009e85ff",MethEnh="#828fb3ff","Total CN"="#ff6161ff",
-                 "Minor CN"="#ffa600ff","DNA Alt"="#ba4f8fff")
+colors_LFs = c(LF1="#ee3377ff",LF2="#ee7733ff",LF3="#009988ff",LF4="#33bbeeff")
 
-ggR2 <- ggplot(R2.mat.tib ,aes(x=Factor,y=`Variance explained (%)`,fill=`Omics layers`)) + 
-  coord_flip()+  geom_col() + theme_classic() + ylim(c(0,22)) + grids(axis="x") + scale_fill_manual(values=colors_omics)
+R2.mat.tib1a = R2.mat.tib %>% filter(`Molecular layers`!="DNA Alt - naive R2")
 
+ggR2 <- ggplot( R2.mat.tib1a,aes(x=`Molecular layers`,y=`Inter-patient variance explained (%)`,fill=Factor)) +  geom_col() + 
+  theme_classic() + coord_cartesian(ylim=c(0,60),expand = F) + scale_fill_manual(values=colors_LFs) + 
+  geom_hline(yintercept = 10,linetype="dashed") + 
+  ylim(c(0,62)) +coord_flip()
+```
+
+```
+## Coordinate system already present. Adding new coordinate system, which will replace the existing one.
+```
+
+```r
 ggR2
 ```
 
@@ -353,7 +380,7 @@ ggplot( arcs_ks.LFs.stats ,aes(x=nb.LFs,y=t_ratio,col=nb.archetypes)) + geom_lin
 ## Warning: Removed 9 row(s) containing missing values (geom_path).
 ```
 
-![](PhenotypicMap_MESOMICS_files/figure-html/Checksstats-1.png)<!-- -->
+![](PhenotypicMap_MESOMICS_files/figure-html/Checks stats-1.png)<!-- -->
 
 The best t_ratio is reached for 2 LFs (LF2 and LF3) and 3 archetypes. We get the archetypes position within LF2-LF3 space and the projection of the samples in the Pareto front delimited by the 3 archetypes:
 
@@ -364,10 +391,9 @@ tern_arc = as_tibble( t( arc_ks.LFs.noboot$S ) )
 ```
 
 ```
-## Warning: The `x` argument of `as_tibble.matrix()` must have unique column names if `.name_repair` is omitted as of tibble 2.0.0.
-## Using compatibility `.name_repair`.
-## This warning is displayed once every 8 hours.
-## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was generated.
+## Warning: The `x` argument of `as_tibble.matrix()` must have unique column names if
+## `.name_repair` is omitted as of tibble 2.0.0.
+## ℹ Using compatibility `.name_repair`.
 ```
 
 ```r
@@ -449,77 +475,82 @@ sessionInfo()
 ## [1] stats     graphics  grDevices utils     datasets  methods   base     
 ## 
 ## other attached packages:
-##  [1] Ternary_2.1.0     readxl_1.4.0      ParetoTI_0.1.13   lpSolve_5.6.15   
-##  [5] data.table_1.14.2 reticulate_1.25   MOFA2_1.4.0       ggpubr_0.4.0     
-##  [9] forcats_0.5.1     stringr_1.4.0     dplyr_1.0.9       purrr_0.3.4      
-## [13] readr_2.1.2       tidyr_1.2.0       tibble_3.1.7      ggplot2_3.3.6    
-## [17] tidyverse_1.3.1  
+##  [1] Ternary_2.1.0     readxl_1.4.1      ParetoTI_0.1.13   lpSolve_5.6.15   
+##  [5] data.table_1.14.2 DescTools_0.99.46 reticulate_1.26   MOFA2_1.4.0      
+##  [9] ggpubr_0.4.0      forcats_0.5.1     stringr_1.5.0     dplyr_1.0.10     
+## [13] purrr_0.3.4       readr_2.1.3       tidyr_1.2.1       tibble_3.1.8     
+## [17] ggplot2_3.3.6     tidyverse_1.3.1  
 ## 
 ## loaded via a namespace (and not attached):
 ##   [1] backports_1.4.1               AnnotationHub_3.2.2          
 ##   [3] corrplot_0.92                 BiocFileCache_2.2.1          
 ##   [5] plyr_1.8.6                    lazyeval_0.2.2               
-##   [7] splines_4.1.2                 sp_1.4-6                     
-##   [9] GenomeInfoDb_1.30.1           digest_0.6.29                
-##  [11] htmltools_0.5.2               fansi_1.0.3                  
+##   [7] splines_4.1.2                 sp_1.5-1                     
+##   [9] GenomeInfoDb_1.30.1           digest_0.6.31                
+##  [11] htmltools_0.5.4               fansi_1.0.3                  
 ##  [13] magrittr_2.0.3.9000           memoise_2.0.1                
 ##  [15] tzdb_0.3.0                    Biostrings_2.62.0            
-##  [17] modelr_0.1.8                  matrixStats_0.62.0           
-##  [19] colorspace_2.0-3              blob_1.2.3                   
-##  [21] rvest_1.0.2                   rappdirs_0.3.3               
-##  [23] ggrepel_0.9.1                 haven_2.5.0                  
-##  [25] xfun_0.31                     crayon_1.5.1                 
-##  [27] RCurl_1.98-1.7                jsonlite_1.8.0               
-##  [29] glue_1.6.2                    gtable_0.3.0                 
-##  [31] zlibbioc_1.40.0               XVector_0.34.0               
-##  [33] DelayedArray_0.20.0           car_3.0-12                   
-##  [35] Rhdf5lib_1.16.0               BiocGenerics_0.40.0          
-##  [37] HDF5Array_1.22.1              abind_1.4-5                  
-##  [39] scales_1.2.0                  pheatmap_1.0.12              
-##  [41] DBI_1.1.3                     rstatix_0.7.0                
-##  [43] Rcpp_1.0.8.3                  viridisLite_0.4.0            
-##  [45] xtable_1.8-4                  magic_1.6-0                  
-##  [47] bit_4.0.4                     stats4_4.1.2                 
-##  [49] htmlwidgets_1.5.4             httr_1.4.3                   
-##  [51] dir.expiry_1.2.0              RColorBrewer_1.1-3           
-##  [53] ellipsis_0.3.2                farver_2.1.0                 
-##  [55] pkgconfig_2.0.3               sass_0.4.1                   
-##  [57] uwot_0.1.11                   dbplyr_2.2.1                 
-##  [59] utf8_1.2.2                    here_1.0.1                   
-##  [61] labeling_0.4.2                tidyselect_1.1.2             
-##  [63] rlang_1.0.2                   reshape2_1.4.4               
-##  [65] later_1.3.0                   AnnotationDbi_1.56.2         
-##  [67] munsell_0.5.0                 BiocVersion_3.14.0           
-##  [69] cellranger_1.1.0              tools_4.1.2                  
-##  [71] cachem_1.0.6                  cli_3.3.0                    
-##  [73] generics_0.1.2                RSQLite_2.2.14               
-##  [75] broom_0.8.0                   geometry_0.4.6               
-##  [77] evaluate_0.15                 fastmap_1.1.0                
-##  [79] yaml_2.3.5                    knitr_1.38                   
-##  [81] bit64_4.0.5                   fs_1.5.2                     
-##  [83] KEGGREST_1.34.0               nlme_3.1-158                 
-##  [85] mime_0.12                     xml2_1.3.3                   
-##  [87] compiler_4.1.2                rstudioapi_0.13              
-##  [89] plotly_4.10.0                 filelock_1.0.2               
-##  [91] curl_4.3.2                    png_0.1-7                    
-##  [93] interactiveDisplayBase_1.32.0 ggsignif_0.6.3               
-##  [95] reprex_2.0.1                  bslib_0.3.1                  
-##  [97] stringi_1.7.6                 highr_0.9                    
-##  [99] basilisk.utils_1.6.0          lattice_0.20-45              
-## [101] Matrix_1.4-1                  vctrs_0.4.1                  
-## [103] pillar_1.7.0                  lifecycle_1.0.1              
-## [105] rhdf5filters_1.6.0            BiocManager_1.30.18          
-## [107] jquerylib_0.1.4               cowplot_1.1.1                
-## [109] bitops_1.0-7                  httpuv_1.6.5                 
-## [111] R6_2.5.1                      promises_1.2.0.1             
-## [113] IRanges_2.28.0                assertthat_0.2.1             
-## [115] rhdf5_2.38.0                  rprojroot_2.0.3              
-## [117] withr_2.5.0                   S4Vectors_0.32.4             
-## [119] GenomeInfoDbData_1.2.7        mgcv_1.8-40                  
-## [121] parallel_4.1.2                hms_1.1.1                    
-## [123] grid_4.1.2                    basilisk_1.6.0               
-## [125] rmarkdown_2.14                MatrixGenerics_1.6.0         
-## [127] carData_3.0-5                 Rtsne_0.16                   
-## [129] Biobase_2.54.0                shiny_1.7.1                  
-## [131] lubridate_1.8.0
+##  [17] modelr_0.1.10                 matrixStats_0.63.0           
+##  [19] timechange_0.1.1              colorspace_2.0-3             
+##  [21] blob_1.2.3                    rvest_1.0.3                  
+##  [23] rappdirs_0.3.3                ggrepel_0.9.2                
+##  [25] haven_2.5.1                   xfun_0.35                    
+##  [27] crayon_1.5.2                  RCurl_1.98-1.9               
+##  [29] jsonlite_1.8.4                Exact_3.2                    
+##  [31] glue_1.6.2                    gtable_0.3.1                 
+##  [33] zlibbioc_1.40.0               XVector_0.34.0               
+##  [35] DelayedArray_0.20.0           car_3.0-12                   
+##  [37] Rhdf5lib_1.16.0               BiocGenerics_0.40.0          
+##  [39] HDF5Array_1.22.1              abind_1.4-5                  
+##  [41] scales_1.2.1                  pheatmap_1.0.12              
+##  [43] mvtnorm_1.1-3                 DBI_1.1.3                    
+##  [45] rstatix_0.7.0                 Rcpp_1.0.9                   
+##  [47] viridisLite_0.4.1             xtable_1.8-4                 
+##  [49] magic_1.6-0                   bit_4.0.5                    
+##  [51] proxy_0.4-26                  stats4_4.1.2                 
+##  [53] htmlwidgets_1.5.4             httr_1.4.4                   
+##  [55] dir.expiry_1.2.0              RColorBrewer_1.1-3           
+##  [57] ellipsis_0.3.2                farver_2.1.1                 
+##  [59] pkgconfig_2.0.3               sass_0.4.4                   
+##  [61] uwot_0.1.14                   dbplyr_2.2.1                 
+##  [63] utf8_1.2.2                    labeling_0.4.2               
+##  [65] tidyselect_1.2.0              rlang_1.0.6                  
+##  [67] reshape2_1.4.4                later_1.3.0                  
+##  [69] AnnotationDbi_1.56.2          munsell_0.5.0                
+##  [71] BiocVersion_3.14.0            cellranger_1.1.0             
+##  [73] tools_4.1.2                   cachem_1.0.6                 
+##  [75] cli_3.4.1                     generics_0.1.3               
+##  [77] RSQLite_2.2.19                broom_1.0.1                  
+##  [79] geometry_0.4.6                evaluate_0.15                
+##  [81] fastmap_1.1.0                 yaml_2.3.6                   
+##  [83] knitr_1.38                    bit64_4.0.5                  
+##  [85] fs_1.5.2                      KEGGREST_1.34.0              
+##  [87] rootSolve_1.8.2.3             nlme_3.1-160                 
+##  [89] mime_0.12                     xml2_1.3.3                   
+##  [91] compiler_4.1.2                rstudioapi_0.14              
+##  [93] plotly_4.10.0                 filelock_1.0.2               
+##  [95] curl_4.3.3                    png_0.1-8                    
+##  [97] interactiveDisplayBase_1.32.0 e1071_1.7-9                  
+##  [99] ggsignif_0.6.3                reprex_2.0.2                 
+## [101] bslib_0.4.1                   stringi_1.7.8                
+## [103] highr_0.9                     basilisk.utils_1.6.0         
+## [105] lattice_0.20-45               Matrix_1.5-3                 
+## [107] vctrs_0.5.1                   pillar_1.8.1                 
+## [109] lifecycle_1.0.3               rhdf5filters_1.6.0           
+## [111] BiocManager_1.30.18           jquerylib_0.1.4              
+## [113] cowplot_1.1.1                 bitops_1.0-7                 
+## [115] lmom_2.9                      httpuv_1.6.6                 
+## [117] R6_2.5.1                      promises_1.2.0.1             
+## [119] IRanges_2.28.0                gld_2.6.5                    
+## [121] boot_1.3-28.1                 MASS_7.3-58.1                
+## [123] assertthat_0.2.1              rhdf5_2.38.0                 
+## [125] withr_2.5.0                   GenomeInfoDbData_1.2.7       
+## [127] S4Vectors_0.32.4              mgcv_1.8-41                  
+## [129] expm_0.999-6                  parallel_4.1.2               
+## [131] hms_1.1.2                     grid_4.1.2                   
+## [133] basilisk_1.6.0                class_7.3-20                 
+## [135] rmarkdown_2.18                MatrixGenerics_1.6.0         
+## [137] carData_3.0-5                 Rtsne_0.16                   
+## [139] Biobase_2.54.0                shiny_1.7.3                  
+## [141] lubridate_1.9.0
 ```
