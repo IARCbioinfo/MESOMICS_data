@@ -4,8 +4,7 @@ This repository contains data and processing scripts associated with the MESOMIC
 
 The main analysis paper is available at: http://nature.com/articles/s41588-023-01321-1
 
-The copy number changes, mutations, and structural variants matrices are given in the `phenotypic_map/MESOMICS` folder, in the `TableS31-37_CNVs.xlsx`, `TableS44-46_SNVs.xlsx`, and `TableS41-42_SVs.xlsx` files respectively.
-The expression matrices of the MESOMICS samples correspond to the `gene_count_matrix_1pass.csv` with the raw read counts and `vstexpr.zip` with the normalized read counts, in the `phenotypic_map/MESOMICS` folder.
+The copy number changes, damaging small variants (SNVs and indels), and structural variants matrices are given in the `phenotypic_map/MESOMICS` folder, in the `TableS31-37_CNVs.xlsx`, `TableS44-46_SNVs.xlsx`, and `TableS41-42_SVs.xlsx` files respectively. The folder also contains a maf file with all somatic small variants (damaging and non damaging), var_annovar_maf_corr_allvariants.txt, the exact MOFA inputs (D_alt_MOFA.RData, D_cnv_MOFA.RData, D_exprB_MOFA.RData, D_loh_MOFA.RData, D_met.bodB_MOFA.RData, D_met.enhB_MOFA.RData, D_met.proB_MOFA.RData), and the expression matrices of the MESOMICS samples correspond to the `gene_count_matrix_1pass.csv` with the raw read counts and `vstexpr.zip` with the normalized read counts, in the `phenotypic_map/MESOMICS` folder. There is also a subfolder EGA_metadata with tables to match EGA IDs and file names with MESOMICS sample IDs.
 
 The data note describing the data production, validation, and reuse is available at: https://academic.oup.com/gigascience/article/doi/10.1093/gigascience/giac128/7007909
 
